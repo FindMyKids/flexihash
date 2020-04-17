@@ -6,11 +6,13 @@ import (
 	"io"
 	"sort"
 	"strconv"
+	"sync"
 )
 
 var targetToPositions = make(map[string][]int64)
 var positionToTarget []targetPosition
 var targetCount = 0
+var mutex = sync.Mutex{}
 
 type targetPosition struct {
 	key    int64
@@ -35,6 +37,8 @@ func Lookup(res string, targets []string) (string, error) {
 }
 
 func addTargets(targets []string) error {
+	mutex.Lock()
+	defer mutex.Unlock()
 	if len(positionToTarget) != 0 && len(targetToPositions) != 0 {
 		return nil
 	}
