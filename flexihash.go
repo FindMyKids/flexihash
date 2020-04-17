@@ -9,14 +9,18 @@ import (
 	"sync"
 )
 
-var targetToPositions = make(map[string][]int64)
-var positionToTarget []targetPosition
-var targetCount = 0
-var mutex = sync.Mutex{}
+var finders = make(map[string]*finder)
 
 type targetPosition struct {
 	key    int64
 	target string
+}
+
+type finder struct {
+	targetToPositions map[string][]int64
+	positionToTarget  []targetPosition
+	targetCount       int
+	mutex             sync.Mutex
 }
 
 const (
@@ -25,21 +29,35 @@ const (
 )
 
 func Lookup(res string, targets []string) (string, error) {
-	err := addTargets(targets)
+	key := fmt.Sprint(targets)
+	var instance *finder
+	var ok bool
+	if instance, ok = finders[key]; !ok || instance == nil {
+		instance = &finder{
+			targetToPositions: make(map[string][]int64),
+			positionToTarget:  nil,
+			targetCount:       0,
+			mutex:             sync.Mutex{},
+		}
+		finders[key] = instance
+	}
+
+	err := instance.addTargets(targets)
 	if err != nil {
 		return "", err
 	}
-	targetList := list(res, 1, targets)
+
+	targetList := instance.list(res, 1, targets)
 	if len(targetList) == 0 {
 		return "", fmt.Errorf("no targets exist")
 	}
 	return targetList[0], nil
 }
 
-func addTargets(targets []string) error {
-	mutex.Lock()
-	defer mutex.Unlock()
-	if len(positionToTarget) != 0 && len(targetToPositions) != 0 {
+func (f *finder) addTargets(targets []string) error {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	if len(f.positionToTarget) != 0 && len(f.targetToPositions) != 0 {
 		return nil
 	}
 
@@ -49,14 +67,14 @@ func addTargets(targets []string) error {
 			if err != nil {
 				return err
 			}
-			positionToTarget = append(positionToTarget, targetPosition{position, target})
-			targetToPositions[target] = append(targetToPositions[target], position)
+			f.positionToTarget = append(f.positionToTarget, targetPosition{position, target})
+			f.targetToPositions[target] = append(f.targetToPositions[target], position)
 		}
-		targetCount++
+		f.targetCount++
 	}
 
-	sort.Slice(positionToTarget, func(i, j int) bool {
-		return positionToTarget[i].key < positionToTarget[j].key
+	sort.Slice(f.positionToTarget, func(i, j int) bool {
+		return f.positionToTarget[i].key < f.positionToTarget[j].key
 	})
 
 	return nil
@@ -69,19 +87,21 @@ func hash(item string) (int64, error) {
 	return strconv.ParseInt(md[0:8], 16, 0)
 }
 
-func list(res string, requested int, targets []string) []string {
+func (f *finder) list(res string, requested int, targets []string) []string {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
 	if len(targets) == 0 {
 		return targets
 	}
 
-	if len(positionToTarget) == 0 {
+	if len(f.positionToTarget) == 0 {
 		return []string{}
 	}
 
 	position, _ := hash(res)
 	var result []string
 	var collect = false
-	for _, value := range positionToTarget {
+	for _, value := range f.positionToTarget {
 		if !collect && value.key > position {
 			collect = true
 		}
@@ -95,7 +115,7 @@ func list(res string, requested int, targets []string) []string {
 		}
 	}
 
-	for _, value := range positionToTarget {
+	for _, value := range f.positionToTarget {
 		if !inSlice(value.target, result) {
 			result = append(result, value.target)
 		}

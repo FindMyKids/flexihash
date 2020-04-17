@@ -38,6 +38,10 @@ func TestLookup(t *testing.T) {
 			value,
 		})
 	}
+	_, err = Lookup("some_key", []string{"any_other_target", "any_other_target2"})
+	if err != nil {
+		t.Error(err)
+	}
 	for _, tt := range tests {
 		got, err := Lookup(tt.args.res, tt.args.targets)
 		if err != nil {
@@ -46,5 +50,9 @@ func TestLookup(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("Lookup(%v, %v) = %v, want %v", tt.args.res, tt.args.targets, got, tt.want)
 		}
+	}
+
+	if len(finders) != 2 {
+		t.Errorf("Expected 2 finders, has: %d", len(finders))
 	}
 }
